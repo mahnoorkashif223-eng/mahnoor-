@@ -1,14 +1,12 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import type { Organization, OrgType } from "@/lib/types";
+import type { OrgType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Building2 } from "lucide-react";
+import { Loader2, Plus, Building2, Users } from "lucide-react";
 
-// Per-type badge colour overrides (using Tailwind utility classes directly
-// since Badge only ships default/secondary/destructive/outline variants)
 const orgTypeBadgeClass: Record<OrgType, string> = {
   school: "bg-blue-100 text-blue-800 border-blue-200",
   nonprofit: "bg-green-100 text-green-800 border-green-200",
@@ -29,20 +27,32 @@ function formatDate(iso: string) {
   });
 }
 
+interface OrgWithCount {
+  id: string;
+  name: string;
+  type: OrgType;
+  created_by: string;
+  created_at: string;
+  school_district: string | null;
+  ein: string | null;
+  industry: string | null;
+  organization_members: { count: number }[];
+}
+
 export default function Organizations() {
   const {
     data: orgs,
     isLoading,
     error,
-  } = useQuery<Organization[]>({
+  } = useQuery<OrgWithCount[]>({
     queryKey: ["organizations"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("organizations")
-        .select("*")
+        .select("*, organization_members(count)")
         .order("created_at", { ascending: false });
       if (error) throw new Error(error.message);
-      return data as Organization[];
+      return data as OrgWithCount[];
     },
   });
 
@@ -90,26 +100,35 @@ export default function Organizations() {
       {/* List */}
       {!isLoading && !error && orgs && orgs.length > 0 && (
         <div className="grid gap-3">
-          {orgs.map((org) => (
-            <Link key={org.id} to={`/organizations/${org.id}`}>
-              <Card className="hover:bg-accent/40 transition-colors cursor-pointer">
-                <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4 px-5">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-medium truncate">{org.name}</span>
-                    <Badge
-                      variant="outline"
-                      className={orgTypeBadgeClass[org.type]}
-                    >
-                      {orgTypeLabel[org.type]}
-                    </Badge>
-                  </div>
-                  <span className="text-sm text-muted-foreground shrink-0">
-                    {formatDate(org.created_at)}
-                  </span>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+          {orgs.map((org) => {
+            const memberCount = org.organization_members?.[0]?.count ?? 0;
+            return (
+              <Link key={org.id} to={`/organizations/${org.id}`}>
+                <Card className="hover:bg-accent/40 transition-colors cursor-pointer">
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4 px-5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="font-medium truncate">{org.name}</span>
+                      <Badge
+                        variant="outline"
+                        className={orgTypeBadgeClass[org.type]}
+                      >
+                        {orgTypeLabel[org.type]}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-4 shrink-0">
+                      <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Users className="h-4 w-4" />
+                        {memberCount}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {formatDate(org.created_at)}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
