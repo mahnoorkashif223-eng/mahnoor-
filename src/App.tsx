@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "sonner";
 import { AuthProvider } from "@/hooks/use-auth";
+import { ThemeProvider } from "@/hooks/use-theme";
 import { ProtectedRoute } from "@/components/protected-route";
 import Layout from "@/components/layout";
 import SignIn from "@/pages/sign-in";
@@ -13,24 +15,27 @@ const queryClient = new QueryClient();
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/sign-in" element={<SignIn />} />
-            <Route path="/sign-up" element={<SignUp />} />
-            <Route element={<ProtectedRoute />}>
-              <Route element={<Layout />}>
-                <Route path="/organizations" element={<Organizations />} />
-                <Route path="/organizations/new" element={<CreateOrganization />} />
-                <Route path="/organizations/:id" element={<OrganizationDetail />} />
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/sign-in" element={<SignIn />} />
+              <Route path="/sign-up" element={<SignUp />} />
+              <Route element={<ProtectedRoute />}>
+                <Route element={<Layout />}>
+                  <Route path="/organizations" element={<Organizations />} />
+                  <Route path="/organizations/new" element={<CreateOrganization />} />
+                  <Route path="/organizations/:id" element={<OrganizationDetail />} />
+                </Route>
               </Route>
-            </Route>
-            <Route path="*" element={<Navigate to="/organizations" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </QueryClientProvider>
+              <Route path="*" element={<Navigate to="/organizations" replace />} />
+            </Routes>
+          </BrowserRouter>
+          <Toaster richColors closeButton position="top-right" />
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 

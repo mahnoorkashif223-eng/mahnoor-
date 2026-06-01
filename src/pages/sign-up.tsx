@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Building2, Loader2 } from "lucide-react";
 
 const signUpSchema = z.object({
   full_name: z.string().min(1, "Full name is required"),
@@ -30,6 +31,7 @@ export default function SignUp() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const nameRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<SignUpFormValues>({
     resolver: zodResolver(signUpSchema),
@@ -39,6 +41,13 @@ export default function SignUp() {
       password: "",
     },
   });
+
+  const { ref: nameFormRef, ...nameRest } = form.register("full_name");
+
+  useEffect(() => {
+    document.title = "Sign up - OrgHub";
+    nameRef.current?.focus();
+  }, []);
 
   if (!loading && user) {
     return <Navigate to="/organizations" replace />;
@@ -73,87 +82,126 @@ export default function SignUp() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-          <CardDescription>
-            Enter your details below to create your account
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="full_name">Full name</Label>
-              <Input
-                id="full_name"
-                type="text"
-                placeholder="Jane Doe"
-                autoComplete="name"
-                {...form.register("full_name")}
-              />
-              {form.formState.errors.full_name && (
-                <p className="text-sm text-red-600">
-                  {form.formState.errors.full_name.message}
-                </p>
-              )}
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_center,_hsl(var(--muted))_1px,_transparent_1px)] [background-size:24px_24px] opacity-50" />
+
+      <div className="w-full max-w-sm">
+        {/* Logo */}
+        <div className="flex justify-center mb-8">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+              <Building2 className="h-4 w-4 text-primary-foreground" />
             </div>
+            <span className="text-lg font-semibold tracking-tight">OrgHub</span>
+          </div>
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                autoComplete="email"
-                {...form.register("email")}
-              />
-              {form.formState.errors.email && (
-                <p className="text-sm text-red-600">
-                  {form.formState.errors.email.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                autoComplete="new-password"
-                {...form.register("password")}
-              />
-              {form.formState.errors.password && (
-                <p className="text-sm text-red-600">
-                  {form.formState.errors.password.message}
-                </p>
-              )}
-            </div>
-
-            {error && (
-              <div className="rounded-md bg-red-50 border border-red-200 p-3">
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            )}
-
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Creating account..." : "Create account"}
-            </Button>
-          </form>
-        </CardContent>
-        <CardFooter className="flex justify-center">
-          <p className="text-sm text-gray-600">
-            Already have an account?{" "}
-            <Link
-              to="/sign-in"
-              className="font-medium text-blue-600 hover:text-blue-500 hover:underline"
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-semibold tracking-tight">
+              Create an account
+            </CardTitle>
+            <CardDescription>Get started with OrgHub</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              noValidate
+              className="space-y-4"
             >
-              Sign in
-            </Link>
-          </p>
-        </CardFooter>
-      </Card>
+              {error && (
+                <div className="bg-destructive/10 text-destructive border border-destructive/20 rounded-md px-3 py-2 text-sm">
+                  {error}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="full_name" className="text-sm font-medium">
+                  Full name
+                </Label>
+                <Input
+                  id="full_name"
+                  type="text"
+                  placeholder="Jane Doe"
+                  autoComplete="name"
+                  ref={(e) => {
+                    nameFormRef(e);
+                    nameRef.current = e;
+                  }}
+                  {...nameRest}
+                />
+                {form.formState.errors.full_name && (
+                  <p className="text-sm text-destructive">
+                    {form.formState.errors.full_name.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-sm font-medium">
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  {...form.register("email")}
+                />
+                {form.formState.errors.email && (
+                  <p className="text-sm text-destructive">
+                    {form.formState.errors.email.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium">
+                  Password
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Min. 6 characters"
+                  autoComplete="new-password"
+                  {...form.register("password")}
+                />
+                {form.formState.errors.password && (
+                  <p className="text-sm text-destructive">
+                    {form.formState.errors.password.message}
+                  </p>
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creating account...
+                  </>
+                ) : (
+                  "Create account"
+                )}
+              </Button>
+            </form>
+          </CardContent>
+          <CardFooter className="flex justify-center">
+            <p className="text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <Link
+                to="/sign-in"
+                className="font-medium text-primary hover:text-primary/80 transition-colors"
+              >
+                Sign in
+              </Link>
+            </p>
+          </CardFooter>
+        </Card>
+      </div>
     </div>
   );
 }

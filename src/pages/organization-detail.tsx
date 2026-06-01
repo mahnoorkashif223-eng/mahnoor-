@@ -1,65 +1,73 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/lib/supabase";
-import type { Organization, OrganizationMember, OrgType } from "@/lib/types";
+import type { Organization, OrganizationMember } from "@/lib/types";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Loader2, UserPlus, Users } from "lucide-react";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { PageHeader } from "@/components/common/PageHeader";
+import { TypeBadge } from "@/components/common/TypeBadge";
+import { StatusPill } from "@/components/common/StatusPill";
+import { InfoRow } from "@/components/common/InfoRow";
+import { EmptyState } from "@/components/common/EmptyState";
+import { LoadingTable } from "@/components/common/LoadingTable";
+import { ErrorState } from "@/components/common/ErrorState";
+import {
+  ChevronLeft,
+  Loader2,
+  Users,
+  Mail,
+} from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-const orgTypeBadgeClass: Record<OrgType, string> = {
-  school: "bg-blue-100 text-blue-800 border-blue-200",
-  nonprofit: "bg-green-100 text-green-800 border-green-200",
-  business: "bg-purple-100 text-purple-800 border-purple-200",
-};
-
-const orgTypeLabel: Record<OrgType, string> = {
-  school: "School",
-  nonprofit: "Nonprofit",
-  business: "Business",
-};
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Invite form schema
-// ---------------------------------------------------------------------------
 const inviteSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
 });
 type InviteFormValues = z.infer<typeof inviteSchema>;
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 export default function OrganizationDetail() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
-  const [inviteFeedback, setInviteFeedback] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
-  // ---- Org query ----
   const {
     data: org,
     isLoading: orgLoading,
     error: orgError,
+    refetch: refetchOrg,
   } = useQuery<Organization>({
     queryKey: ["organization", id],
     queryFn: async () => {
@@ -74,11 +82,11 @@ export default function OrganizationDetail() {
     enabled: !!id,
   });
 
-  // ---- Members query ----
   const {
     data: members,
     isLoading: membersLoading,
     error: membersError,
+    refetch: refetchMembers,
   } = useQuery<OrganizationMember[]>({
     queryKey: ["members", id],
     queryFn: async () => {
@@ -93,7 +101,12 @@ export default function OrganizationDetail() {
     enabled: !!id,
   });
 
-  // ---- Invite form ----
+  useEffect(() => {
+    if (org) {
+      document.title = `${org.name} - OrgHub`;
+    }
+  }, [org]);
+
   const {
     register,
     handleSubmit,
@@ -110,234 +123,278 @@ export default function OrganizationDetail() {
         body: { organization_id: id, email },
       });
       if (error) throw new Error(error.message);
-      // Edge function may also return an error payload in `data`
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["members", id] });
       reset();
-      setInviteFeedback({
-        type: "success",
-        message: "Invitation sent successfully.",
-      });
+      setInviteError(null);
+      setInviteOpen(false);
+      toast.success("Invitation sent", { description: variables.email });
     },
     onError: (err: Error) => {
-      setInviteFeedback({ type: "error", message: err.message });
+      if (err.message.toLowerCase().includes("already")) {
+        setInviteError("This email has already been invited to this organization.");
+      } else {
+        setInviteError(err.message);
+      }
     },
   });
 
   const onInviteSubmit = (values: InviteFormValues) => {
-    setInviteFeedback(null);
+    setInviteError(null);
     inviteMutation.mutate(values);
   };
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
-  // Full-page loading / error for the org
+  // Loading state
   if (orgLoading) {
     return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        <Skeleton className="h-4 w-32" />
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-48" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <Skeleton className="h-64 w-full rounded-lg" />
+          </div>
+          <Skeleton className="h-64 w-full rounded-lg" />
+        </div>
       </div>
     );
   }
 
+  // Error state
   if (orgError || !org) {
     return (
       <div className="space-y-4">
-        <BackLink />
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {orgError ? (orgError as Error).message : "Organization not found."}
-        </div>
+        <Link
+          to="/organizations"
+          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground gap-1 transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" /> Organizations
+        </Link>
+        <Card>
+          <ErrorState
+            message={
+              orgError
+                ? (orgError as Error).message
+                : "Organization not found."
+            }
+            onRetry={() => refetchOrg()}
+          />
+        </Card>
       </div>
     );
   }
 
+  const memberCount = members?.length ?? 0;
+
   return (
-    <div className="space-y-8">
-      <BackLink />
+    <div>
+      {/* Back link */}
+      <div className="mb-2">
+        <Link
+          to="/organizations"
+          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground gap-1 transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" /> Organizations
+        </Link>
+      </div>
 
-      {/* ---- Org details ---- */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle className="text-xl">{org.name}</CardTitle>
-            <Badge
-              variant="outline"
-              className={orgTypeBadgeClass[org.type]}
-            >
-              {orgTypeLabel[org.type]}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          {org.type === "school" && org.school_district && (
-            <DetailRow label="School District" value={org.school_district} />
-          )}
-          {org.type === "nonprofit" && org.ein && (
-            <DetailRow label="EIN" value={org.ein} />
-          )}
-          {org.type === "business" && org.industry && (
-            <DetailRow label="Industry" value={org.industry} />
-          )}
-          <DetailRow label="Created" value={formatDate(org.created_at)} />
-        </CardContent>
-      </Card>
+      <PageHeader
+        title={
+          <span className="flex items-center gap-3">
+            {org.name}
+            <TypeBadge type={org.type} />
+          </span>
+        }
+        description={`Created ${formatDistanceToNow(new Date(org.created_at), { addSuffix: true })}`}
+        action={
+          <Dialog open={inviteOpen} onOpenChange={(open) => {
+            setInviteOpen(open);
+            if (!open) {
+              setInviteError(null);
+              reset();
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button>
+                <Mail className="h-4 w-4 mr-2" />
+                Invite member
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Invite member</DialogTitle>
+                <DialogDescription>
+                  They'll receive an invitation to join {org.name}.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit(onInviteSubmit)} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="invite-email" className="text-sm font-medium">
+                    Email address
+                  </Label>
+                  <Input
+                    id="invite-email"
+                    type="email"
+                    placeholder="colleague@example.com"
+                    {...register("email")}
+                  />
+                  {errors.email && (
+                    <p className="text-sm text-destructive">
+                      {errors.email.message}
+                    </p>
+                  )}
+                  {inviteError && (
+                    <p className="text-sm text-destructive">{inviteError}</p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setInviteOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={inviteMutation.isPending}>
+                    {inviteMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      "Send invitation"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
-      {/* ---- Members section ---- */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Users className="h-5 w-5 text-muted-foreground" />
-          <h2 className="text-lg font-semibold">Members</h2>
+      {/* Two-column layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Members card */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">Members</CardTitle>
+                <Badge variant="secondary">{memberCount}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {membersLoading && (
+                <div className="p-6">
+                  <LoadingTable rows={3} cols={4} />
+                </div>
+              )}
+
+              {membersError && (
+                <ErrorState
+                  message={(membersError as Error).message}
+                  onRetry={() => refetchMembers()}
+                />
+              )}
+
+              {!membersLoading &&
+                !membersError &&
+                members?.length === 0 && (
+                  <EmptyState
+                    icon={Users}
+                    title="No members yet"
+                    description="Invite teammates to collaborate in this organization."
+                    action={
+                      <Button onClick={() => setInviteOpen(true)}>
+                        Invite member
+                      </Button>
+                    }
+                  />
+                )}
+
+              {!membersLoading &&
+                !membersError &&
+                members &&
+                members.length > 0 && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Invited</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {members.map((member) => (
+                        <TableRow key={member.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback className="text-xs font-medium bg-primary/10 text-primary">
+                                  {member.email.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm font-medium">
+                                {member.email}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              {member.role || "member"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <StatusPill status={member.status} />
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {formatDistanceToNow(new Date(member.invited_at), {
+                              addSuffix: true,
+                            })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+            </CardContent>
+          </Card>
         </div>
 
-        {membersLoading && (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        )}
-
-        {membersError && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {(membersError as Error).message}
-          </div>
-        )}
-
-        {!membersLoading && !membersError && members?.length === 0 && (
-          <p className="text-sm text-muted-foreground py-4">No members yet.</p>
-        )}
-
-        {!membersLoading && !membersError && members && members.length > 0 && (
+        {/* Org info card */}
+        <div className="lg:col-span-1">
           <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/40">
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Email
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Role
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Invited
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((member) => (
-                    <tr key={member.id} className="border-b last:border-0">
-                      <td className="px-4 py-3 font-medium">{member.email}</td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          variant="outline"
-                          className={
-                            member.status === "active"
-                              ? "bg-green-100 text-green-800 border-green-200"
-                              : "bg-yellow-100 text-yellow-800 border-yellow-200"
-                          }
-                        >
-                          {member.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {member.role || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {formatDate(member.invited_at)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
-      </section>
-
-      {/* ---- Invite form ---- */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">Invite Member</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form
-            onSubmit={handleSubmit(onInviteSubmit)}
-            className="flex flex-col sm:flex-row gap-3"
-          >
-            <div className="flex-1 space-y-1.5">
-              <Label htmlFor="invite-email" className="sr-only">
-                Email address
-              </Label>
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="colleague@example.com"
-                {...register("email")}
+            <CardHeader>
+              <CardTitle className="text-base">Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <InfoRow label="Type" value={<TypeBadge type={org.type} />} />
+              {org.type === "school" && org.school_district && (
+                <InfoRow label="School district" value={org.school_district} />
+              )}
+              {org.type === "nonprofit" && org.ein && (
+                <InfoRow label="EIN" value={org.ein} />
+              )}
+              {org.type === "business" && org.industry && (
+                <InfoRow label="Industry" value={org.industry} />
+              )}
+              <Separator />
+              <InfoRow
+                label="Created"
+                value={format(new Date(org.created_at), "PP")}
               />
-              {errors.email && (
-                <p className="text-xs text-red-600">{errors.email.message}</p>
-              )}
-            </div>
-            <Button
-              type="submit"
-              disabled={inviteMutation.isPending}
-              className="shrink-0"
-            >
-              {inviteMutation.isPending && (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              )}
-              {inviteMutation.isPending ? "Sending…" : "Send Invite"}
-            </Button>
-          </form>
-
-          {/* Feedback message */}
-          {inviteFeedback && (
-            <div
-              className={`mt-3 rounded-md border px-4 py-3 text-sm ${
-                inviteFeedback.type === "success"
-                  ? "bg-green-50 border-green-200 text-green-700"
-                  : "bg-red-50 border-red-200 text-red-700"
-              }`}
-            >
-              {inviteFeedback.message}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Small helpers
-// ---------------------------------------------------------------------------
-function BackLink() {
-  return (
-    <Link
-      to="/organizations"
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      Back to organizations
-    </Link>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex gap-2">
-      <span className="text-muted-foreground w-32 shrink-0">{label}</span>
-      <span className="font-medium">{value}</span>
+              <InfoRow label="Members" value={`${memberCount} total`} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
