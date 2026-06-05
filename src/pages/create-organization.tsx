@@ -1,26 +1,26 @@
+import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/use-auth";
+import type { OrgType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ChevronLeft, Loader2, GraduationCap, HeartHandshake, Briefcase } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-// ---------------------------------------------------------------------------
-// Zod schema
-// ---------------------------------------------------------------------------
 const schema = z
   .object({
     name: z.string().min(1, "Name is required"),
@@ -57,18 +57,46 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>;
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+const typeOptions: {
+  value: OrgType;
+  label: string;
+  icon: typeof GraduationCap;
+  description: string;
+}[] = [
+  {
+    value: "school",
+    label: "School",
+    icon: GraduationCap,
+    description: "Educational institution",
+  },
+  {
+    value: "nonprofit",
+    label: "Nonprofit",
+    icon: HeartHandshake,
+    description: "Tax-exempt organization",
+  },
+  {
+    value: "business",
+    label: "Business",
+    icon: Briefcase,
+    description: "For-profit company",
+  },
+];
+
 export default function CreateOrganization() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    document.title = "New organization - OrgHub";
+  }, []);
+
   const {
     register,
     handleSubmit,
     watch,
+    control,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -89,15 +117,23 @@ export default function CreateOrganization() {
         name: values.name,
         type: values.type,
         created_by: user!.id,
-        school_district: values.type === "school" ? (values.school_district ?? null) : null,
+        school_district:
+          values.type === "school" ? (values.school_district ?? null) : null,
         ein: values.type === "nonprofit" ? (values.ein ?? null) : null,
-        industry: values.type === "business" ? (values.industry ?? null) : null,
+        industry:
+          values.type === "business" ? (values.industry ?? null) : null,
       });
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      toast.success("Organization created");
       navigate("/organizations");
+    },
+    onError: (err: Error) => {
+      toast.error("Failed to create organization", {
+        description: err.message,
+      });
     },
   });
 
@@ -106,120 +142,173 @@ export default function CreateOrganization() {
   };
 
   return (
-    <div className="space-y-6 max-w-xl">
-      {/* Back link */}
-      <Link
-        to="/organizations"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to organizations
-      </Link>
+    <div className="max-w-lg mx-auto">
+      <div className="mb-6">
+        <Link
+          to="/organizations"
+          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground gap-1 transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Organizations
+        </Link>
+      </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Create Organization</CardTitle>
+          <CardTitle className="text-lg">New organization</CardTitle>
           <CardDescription>
-            Fill in the details below to add a new organization.
+            Set up an organization and invite members later.
           </CardDescription>
         </CardHeader>
-
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            {/* Name */}
-            <div className="space-y-1.5">
-              <Label htmlFor="name">Organization Name</Label>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="name" className="text-sm font-medium">
+                Organization name
+              </Label>
               <Input
                 id="name"
-                placeholder="Acme Corp"
+                placeholder="e.g. Acme Corp"
                 {...register("name")}
               />
               {errors.name && (
-                <p className="text-xs text-red-600">{errors.name.message}</p>
+                <p className="text-sm text-destructive">
+                  {errors.name.message}
+                </p>
               )}
             </div>
 
-            {/* Type */}
-            <div className="space-y-1.5">
-              <Label htmlFor="type">Type</Label>
-              <Select id="type" {...register("type")}>
-                <option value="">Select a type…</option>
-                <option value="school">School</option>
-                <option value="nonprofit">Nonprofit</option>
-                <option value="business">Business</option>
-              </Select>
+            {/* Type picker — 3 selectable cards */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Organization type</Label>
+              <Controller
+                name="type"
+                control={control}
+                render={({ field }) => (
+                  <div className="grid grid-cols-3 gap-2">
+                    {typeOptions.map((opt) => {
+                      const isSelected = field.value === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => field.onChange(opt.value)}
+                          className={cn(
+                            "flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-all",
+                            isSelected
+                              ? "border-primary ring-2 ring-primary/20 bg-primary/5"
+                              : "border-border hover:border-muted-foreground/30"
+                          )}
+                        >
+                          <opt.icon
+                            className={cn(
+                              "h-5 w-5",
+                              isSelected
+                                ? "text-primary"
+                                : "text-muted-foreground"
+                            )}
+                          />
+                          <span
+                            className={cn(
+                              "text-sm font-medium",
+                              isSelected
+                                ? "text-primary"
+                                : "text-foreground"
+                            )}
+                          >
+                            {opt.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              />
               {errors.type && (
-                <p className="text-xs text-red-600">{errors.type.message}</p>
+                <p className="text-sm text-destructive">
+                  {errors.type.message}
+                </p>
               )}
             </div>
 
-            {/* Conditional: School District */}
+            {/* Conditional fields */}
             {selectedType === "school" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="school_district">School District</Label>
+              <div className="space-y-2 transition-all duration-200">
+                <Label htmlFor="school_district" className="text-sm font-medium">
+                  School district
+                </Label>
                 <Input
                   id="school_district"
                   placeholder="e.g. Springfield USD"
                   {...register("school_district")}
                 />
                 {errors.school_district && (
-                  <p className="text-xs text-red-600">
+                  <p className="text-sm text-destructive">
                     {errors.school_district.message}
                   </p>
                 )}
               </div>
             )}
 
-            {/* Conditional: EIN */}
             {selectedType === "nonprofit" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="ein">EIN</Label>
+              <div className="space-y-2 transition-all duration-200">
+                <Label htmlFor="ein" className="text-sm font-medium">
+                  EIN (Employer Identification Number)
+                </Label>
                 <Input
                   id="ein"
                   placeholder="e.g. 12-3456789"
                   {...register("ein")}
                 />
                 {errors.ein && (
-                  <p className="text-xs text-red-600">{errors.ein.message}</p>
+                  <p className="text-sm text-destructive">
+                    {errors.ein.message}
+                  </p>
                 )}
               </div>
             )}
 
-            {/* Conditional: Industry */}
             {selectedType === "business" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="industry">Industry</Label>
+              <div className="space-y-2 transition-all duration-200">
+                <Label htmlFor="industry" className="text-sm font-medium">
+                  Industry
+                </Label>
                 <Input
                   id="industry"
                   placeholder="e.g. Software & Technology"
                   {...register("industry")}
                 />
                 {errors.industry && (
-                  <p className="text-xs text-red-600">
+                  <p className="text-sm text-destructive">
                     {errors.industry.message}
                   </p>
                 )}
               </div>
             )}
 
-            {/* Mutation error */}
             {mutation.isError && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="bg-destructive/10 text-destructive border border-destructive/20 rounded-md px-3 py-2 text-sm">
                 {(mutation.error as Error).message}
               </div>
             )}
 
-            {/* Submit */}
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={mutation.isPending}
-            >
-              {mutation.isPending && (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              )}
-              {mutation.isPending ? "Creating…" : "Create Organization"}
-            </Button>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+              <Link to="/organizations">
+                <Button type="button" variant="outline" className="w-full sm:w-auto">
+                  Cancel
+                </Button>
+              </Link>
+              <Button
+                type="submit"
+                disabled={mutation.isPending}
+                className="w-full sm:w-auto"
+              >
+                {mutation.isPending && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {mutation.isPending ? "Creating..." : "Create organization"}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
