@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL ?? "").trim().replace(/^["']|["']$/g, "");
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? "").trim().replace(/^["']|["']$/g, "");
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL ?? "").replace(/[\s\r\n\0"']/g, "");
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? "").replace(/[\s\r\n\0"']/g, "");
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
